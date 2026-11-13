@@ -11,122 +11,186 @@
       html, body, #viewer { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #08090b; }
       #viewer { position: fixed; inset: 0; isolation: isolate; }
       #slideshow-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
-      #status { position: absolute; inset: auto 24px 24px; z-index: 2; color: #f5f5f5; text-align: center; font-size: 14px; text-shadow: 0 1px 10px #000; pointer-events: none; }
+      #status { position: absolute; inset: auto 24px 24px; z-index: 7; color: #f5f5f5; text-align: center; font-size: 14px; text-shadow: 0 1px 10px #000; pointer-events: none; }
       #status[hidden] { display: none; }
       #fullscreen-toggle {
-        position: absolute; z-index: 3; top: max(16px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right));
+        position: absolute; z-index: 7; top: max(16px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right));
         display: grid; width: 44px; height: 44px; place-items: center; border: 1px solid rgb(255 255 255 / 32%);
         border-radius: 50%; color: #fff; background: rgb(12 14 18 / 42%); backdrop-filter: blur(12px);
         opacity: .68; cursor: pointer; transition: opacity 180ms ease, background 180ms ease;
       }
       #fullscreen-toggle:hover, #fullscreen-toggle:focus-visible { opacity: 1; background: rgb(12 14 18 / 76%); }
-      #fullscreen-toggle:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
       #fullscreen-toggle svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-      @media (prefers-reduced-motion: reduce) { #fullscreen-toggle { transition: none; } }
+      #intro { position: absolute; inset: 0; z-index: 2; background: #000; overflow: hidden; }
+      #intro[hidden] { display: none; }
+      #intro video { position: absolute; inset: 0; width: 100%; height: 100%; }
+      #introBg { object-fit: cover; filter: blur(32px) brightness(.55); transform: scale(1.15); }
+      #introFg { object-fit: contain; }
+      #sparkle { position: absolute; inset: 0; z-index: 4; width: 100%; height: 100%; pointer-events: none; }
+      #start { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; background: #08090b; cursor: pointer; border: 0; color: #fff; }
+      #start[hidden] { display: none; }
+      #start .ic { display: grid; place-items: center; width: 120px; height: 120px; margin: 0 auto; border-radius: 50%; border: 2px solid rgb(255 255 255 / 70%); font-size: 48px; padding-left: 8px; box-shadow: 0 0 60px rgb(255 220 150 / 35%); }
+      #start small { display: block; margin-top: 20px; font-size: 18px; letter-spacing: .12em; text-transform: uppercase; opacity: .85; }
     </style>
   </head>
   <body>
-    <main id="viewer" aria-label="Apresentação de fotos">
-      <canvas id="slideshow-canvas" aria-label="Slideshow de fotos em reprodução contínua"></canvas>
-      <p id="status" role="status" aria-live="polite">Carregando fotos…</p>
+    <main id="viewer" aria-label="Retrospectiva">
+      <canvas id="slideshow-canvas"></canvas>
+      <div id="intro" hidden>
+        <video id="introBg" muted playsinline preload="auto" src="assets/abertura.mp4"></video>
+        <video id="introFg" muted playsinline preload="auto" src="assets/abertura.mp4"></video>
+      </div>
+      <canvas id="sparkle"></canvas>
+      <button id="start" type="button" aria-label="Iniciar retrospectiva"><div><div class="ic">▶</div><small>Iniciar retrospectiva</small></div></button>
+      <p id="status" role="status" aria-live="polite">Carregando…</p>
       <button id="fullscreen-toggle" type="button" aria-label="Ativar tela cheia" title="Tela cheia">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3" /></svg>
       </button>
     </main>
     <script type="module">
       import { createSlideshowEngine } from "./engine.js";
-      import { CONFIG } from "./runtime-data.mjs";
 
       const viewer = document.getElementById("viewer");
       const canvas = document.getElementById("slideshow-canvas");
       const status = document.getElementById("status");
       const fullscreenButton = document.getElementById("fullscreen-toggle");
+      const intro = document.getElementById("intro");
+      const vFg = document.getElementById("introFg");
+      const vBg = document.getElementById("introBg");
+      const startBtn = document.getElementById("start");
+      const sparkle = document.getElementById("sparkle");
+      const sctx = sparkle.getContext("2d");
       const maxDpr = 2;
       const sizeForViewport = () => {
         const dpr = Math.min(window.devicePixelRatio || 1, maxDpr);
-        return {
-          width: Math.max(2, Math.round(window.innerWidth * dpr)),
-          height: Math.max(2, Math.round(window.innerHeight * dpr)),
-        };
+        return { width: Math.max(2, Math.round(window.innerWidth * dpr)), height: Math.max(2, Math.round(window.innerHeight * dpr)) };
       };
-      const dimensions = sizeForViewport();
-      const engine = await createSlideshowEngine({
-        root: viewer,
-        canvas,
-        mode: "loop",
-        ...dimensions,
-        lazyPhotos: true,
-        imageCacheSize: 4,
-      });
+      const engine = await createSlideshowEngine({ root: viewer, canvas, mode: "finite", ...sizeForViewport(), lazyPhotos: true, imageCacheSize: 4 });
 
-      const cycleSeconds = CONFIG.timing.holdSeconds + CONFIG.timing.transitionSeconds;
-      let startedAt;
+      let phase = "idle";
+      let startedAt = 0;
       let latestTime = 0;
-      let prefetchBucket = -1;
+      let ending = false;
 
       function showError(error) {
-        status.textContent = "Não foi possível carregar uma foto. Atualize a página para tentar novamente.";
+        status.textContent = "Não foi possível carregar. Atualize a página para tentar novamente.";
         status.hidden = false;
-        console.error("Slideshow photo load failed", error);
+        console.error("Retro error", error);
       }
 
-      function elapsedSeconds(now) {
-        return ((now - startedAt) / 1000) % engine.duration;
+      // ---- Transição do convite (portada do Builder): brilhos até branco total (deep to white) e o inverso ----
+      function createSparkles(w, h) {
+        const p = [];
+        for (let i = 0; i < 45; i++) p.push({ k: "s", x: Math.random() * w, y: Math.random() * h, size: 1 + Math.random() * 4, speed: .5 + Math.random() * 1.5, rot: Math.random() * Math.PI, twinkle: Math.random() * 6, delay: Math.random() * .3 });
+        for (let i = 0; i < 14; i++) p.push({ k: "b", x: Math.random() * w, y: Math.random() * h, size: 15 + Math.random() * 50, speed: .2 + Math.random() * .5, op: .08 + Math.random() * .15, delay: Math.random() * .3 });
+        return p;
       }
-
-      async function paint(now) {
-        latestTime = elapsedSeconds(now);
-        try {
-          await engine.prepareAt(latestTime);
-          const currentTime = elapsedSeconds(performance.now());
-          await engine.prepareAt(currentTime);
-          engine.renderAt(currentTime);
-          latestTime = currentTime;
-          status.hidden = true;
-
-          const bucket = Math.floor((latestTime + cycleSeconds * 1.5) / cycleSeconds);
-          if (bucket !== prefetchBucket) {
-            prefetchBucket = bucket;
-            engine.prepareAt(latestTime + cycleSeconds * 1.5).catch(showError);
+      function drawSparkle(w, h, parts, progress, whiteAlpha) {
+        sctx.clearRect(0, 0, w, h);
+        sctx.fillStyle = `rgba(255,255,255,${whiteAlpha})`;
+        sctx.fillRect(0, 0, w, h);
+        const sc = Math.max(w, h) / 1000 + .6;
+        for (const q of parts) {
+          const lp = Math.max(0, Math.min(1, (progress - q.delay) / (1 - q.delay)));
+          if (lp <= 0) continue;
+          if (q.k === "b") {
+            const y = q.y - lp * q.speed * h * .15;
+            const r = q.size * sc * (.6 + lp * .6);
+            const g = sctx.createRadialGradient(q.x, y, 0, q.x, y, r);
+            g.addColorStop(0, `rgba(255,236,190,${Math.min(1, q.op * lp * 2)})`);
+            g.addColorStop(1, "rgba(255,236,190,0)");
+            sctx.fillStyle = g; sctx.beginPath(); sctx.arc(q.x, y, r, 0, 7); sctx.fill();
+          } else {
+            const tw = .5 + .5 * Math.sin(progress * 12 * q.speed + q.twinkle);
+            const a = Math.min(1, lp * 1.5) * tw;
+            const r = q.size * sc * 3 * (.4 + lp);
+            sctx.save(); sctx.translate(q.x, q.y); sctx.rotate(q.rot + progress * q.speed);
+            sctx.shadowColor = "rgba(255,215,120,.9)"; sctx.shadowBlur = 12 * sc;
+            sctx.fillStyle = `rgba(255,222,140,${a})`;
+            sctx.beginPath();
+            for (let i = 0; i < 8; i++) { const rr = i % 2 ? r * .22 : r; const an = i * Math.PI / 4; sctx.lineTo(Math.cos(an) * rr, Math.sin(an) * rr); }
+            sctx.closePath(); sctx.fill(); sctx.restore();
           }
-        } catch (error) {
-          showError(error);
         }
-        window.requestAnimationFrame(paint);
+        sctx.save(); sctx.translate(w * .5, h * .5); sctx.rotate(-.4);
+        const fg = sctx.createLinearGradient(-w * .75, 0, w * .75, 0);
+        fg.addColorStop(0, "rgba(255,230,160,0)"); fg.addColorStop(.5, `rgba(255,240,200,${progress * .35})`); fg.addColorStop(1, "rgba(255,230,160,0)");
+        sctx.fillStyle = fg; sctx.fillRect(-w * .75, -3, w * 1.5, 6); sctx.restore();
       }
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      function frames(ms, fn) {
+        return new Promise((res) => {
+          const t0 = performance.now();
+          const step = (now) => { const p = Math.min(1, (now - t0) / ms); fn(p); p < 1 ? requestAnimationFrame(step) : res(); };
+          requestAnimationFrame(step);
+        });
+      }
+      async function sparkleTransition(onPeak) {
+        const w = (sparkle.width = window.innerWidth), h = (sparkle.height = window.innerHeight);
+        const parts = createSparkles(w, h);
+        await frames(800, (p) => { const e = p * p; drawSparkle(w, h, parts, e, e * .95); });
+        drawSparkle(w, h, parts, 1, .97);
+        await onPeak();
+        await wait(150);
+        await frames(700, (p) => { const e = (1 - p) * (1 - p); drawSparkle(w, h, parts, e, e * .9); });
+        sctx.clearRect(0, 0, w, h);
+      }
+
+      // ---- Fluxo: vídeo de abertura -> brilho -> fotos -> brilho -> vídeo ... ----
+      async function paint(now) {
+        if (phase !== "photos") return;
+        try {
+          latestTime = Math.min((now - startedAt) / 1000, engine.duration);
+          await engine.prepareAt(latestTime);
+          engine.renderAt(latestTime);
+          engine.prepareAt(Math.min(latestTime + 4, engine.duration)).catch(() => {});
+          if (latestTime >= engine.duration && !ending) { ending = true; playIntro(true); return; }
+        } catch (error) { showError(error); }
+        requestAnimationFrame(paint);
+      }
+      async function beginPhotos() {
+        await engine.prepareAt(0);
+        engine.renderAt(0);
+        intro.hidden = true;
+        vFg.pause(); vBg.pause();
+        phase = "photos"; ending = false;
+        startedAt = performance.now();
+        requestAnimationFrame(paint);
+      }
+      async function showIntro() {
+        phase = "video";
+        vFg.currentTime = 0; vBg.currentTime = 0;
+        intro.hidden = false;
+        await Promise.all([vFg.play(), vBg.play()]).catch(showError);
+      }
+      async function playIntro(withSparkle) {
+        if (withSparkle) await sparkleTransition(showIntro); else await showIntro();
+        await new Promise((res) => vFg.addEventListener("ended", res, { once: true }));
+        await sparkleTransition(beginPhotos);
+      }
+      startBtn.addEventListener("click", async () => {
+        startBtn.hidden = true;
+        try { await viewer.requestFullscreen(); } catch {}
+        try { await engine.prepareAt(0); } catch (e) { showError(e); }
+        playIntro(false);
+      });
 
       function syncFullscreenButton() {
-        const fullscreen = Boolean(document.fullscreenElement);
-        fullscreenButton.setAttribute("aria-label", fullscreen ? "Sair da tela cheia" : "Ativar tela cheia");
-        fullscreenButton.title = fullscreen ? "Sair da tela cheia" : "Tela cheia";
+        const fs = Boolean(document.fullscreenElement);
+        fullscreenButton.setAttribute("aria-label", fs ? "Sair da tela cheia" : "Ativar tela cheia");
       }
-
       fullscreenButton.addEventListener("click", async () => {
-        try {
-          if (document.fullscreenElement) await document.exitFullscreen();
-          else await viewer.requestFullscreen();
-        } catch (error) {
-          showError(error);
-        }
+        try { document.fullscreenElement ? await document.exitFullscreen() : await viewer.requestFullscreen(); } catch (error) { showError(error); }
       });
       document.addEventListener("fullscreenchange", syncFullscreenButton);
       window.addEventListener("resize", () => {
         const next = sizeForViewport();
         if (next.width === engine.width && next.height === engine.height) return;
         engine.resize(next.width, next.height);
-        engine.prepareAt(latestTime).then(() => engine.renderAt(latestTime)).catch(showError);
+        if (phase === "photos") engine.prepareAt(latestTime).then(() => engine.renderAt(latestTime)).catch(showError);
       }, { passive: true });
 
-      try {
-        await engine.prepareAt(0);
-        engine.renderAt(0);
-        status.hidden = true;
-        startedAt = performance.now();
-        engine.prepareAt(cycleSeconds * 1.5).catch(showError);
-        window.requestAnimationFrame(paint);
-      } catch (error) {
-        showError(error);
-      }
+      status.hidden = true;
     </script>
   </body>
 </html>

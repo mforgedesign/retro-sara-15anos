@@ -79,7 +79,8 @@ export function createMotionPlans(photos, {
       return { index, type, values: [maxZoom, 1, 0, 0] };
     }
     if (type === "pan-right") {
-      const room = Math.max(0, (1 - fitWidth) / 2) * panRoomFactor;
+      // Limitador de velocidade: em telas wide sobra muito espaco, entao o deslocamento e limitado.
+      const room = Math.min(Math.max(0, (1 - fitWidth) / 2) * panRoomFactor, 0.045);
       return { index, type, values: [1, 1, -room, room] };
     }
     return { index, type, values: [1, maxZoom, 0, 0] };
