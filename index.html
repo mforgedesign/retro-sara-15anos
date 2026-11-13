@@ -48,7 +48,7 @@
       </button>
     </main>
     <script type="module">
-      import { createSlideshowEngine } from "./engine.js?v=3";
+      import { createSlideshowEngine } from "./engine.js?v=5";
 
       const viewer = document.getElementById("viewer");
       const canvas = document.getElementById("slideshow-canvas");
@@ -161,17 +161,19 @@
         phase = "video";
         vFg.currentTime = 0; vBg.currentTime = 0;
         intro.hidden = false;
-        await Promise.all([vFg.play(), vBg.play()]).catch(showError);
+        vBg.play().catch(() => {});
+        vFg.play().catch(showError);
       }
       async function playIntro(withSparkle) {
+        const done = new Promise((res) => { vFg.addEventListener("ended", res, { once: true }); });
         if (withSparkle) await sparkleTransition(showIntro); else await showIntro();
-        await new Promise((res) => vFg.addEventListener("ended", res, { once: true }));
+        await Promise.race([done, wait(((vFg.duration || 24) + 3) * 1000)]);
         await sparkleTransition(beginPhotos);
       }
       startBtn.addEventListener("click", async () => {
         startBtn.hidden = true;
-        try { await viewer.requestFullscreen(); } catch {}
-        try { await engine.prepareAt(0); } catch (e) { showError(e); }
+        try { viewer.requestFullscreen().catch(() => {}); } catch {}
+        engine.prepareAt(0).catch(showError);
         playIntro(false);
       });
 

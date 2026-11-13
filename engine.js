@@ -1,12 +1,12 @@
 import createGLTransition from "./vendor/gl-transition-motion.mjs";
-import { CONFIG, EFFECTS, PHOTOS } from "./runtime-data.mjs?v=3";
+import { CONFIG, EFFECTS, PHOTOS } from "./runtime-data.mjs?v=5";
 import {
   createEffectSequence,
   createMotionPlans,
   durationForMode,
   timelineStateAt,
   transitionCountForMode,
-} from "./timeline.mjs?v=3";
+} from "./timeline.mjs?v=5";
 
 const motionUniforms = {
   _fromMotion: "vec4",
@@ -298,7 +298,7 @@ async function preloadLocalPhoto(photo) {
   }
   const image = new Image();
   image.decoding = "async";
-  image.src = source.href + "?v=3";
+  image.src = source.href + "?v=5";
   await image.decode();
   if (image.naturalWidth !== photo.width || image.naturalHeight !== photo.height) {
     throw new Error(`Photo dimensions differ from the manifest for ${photo.file}`);
