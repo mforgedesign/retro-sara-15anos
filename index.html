@@ -48,7 +48,7 @@
       </button>
     </main>
     <script type="module">
-      import { createSlideshowEngine } from "./engine.js";
+      import { createSlideshowEngine } from "./engine.js?v=2";
 
       const viewer = document.getElementById("viewer");
       const canvas = document.getElementById("slideshow-canvas");
@@ -73,7 +73,7 @@
       let ending = false;
 
       function showError(error) {
-        status.textContent = "Não foi possível carregar. Atualize a página para tentar novamente.";
+        status.textContent = "Não foi possível carregar (" + (error && error.message ? error.message : error) + "). Atualize a página (Ctrl+F5).";
         status.hidden = false;
         console.error("Retro error", error);
       }
