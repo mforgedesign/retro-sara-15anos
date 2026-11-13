@@ -35,7 +35,7 @@ export async function createSlideshowEngine({
     throw new RangeError("imageCacheSize must be an integer of at least two");
   }
   if (PHOTOS.length < 1) throw new Error("The photo manifest must contain at least one photo");
-  if (EFFECTS.length !== 11) throw new Error(`Expected 11 bundled GL transitions, found ${EFFECTS.length}`);
+  if (EFFECTS.length < 11) throw new Error(`Expected at least 11 bundled GL transitions, found ${EFFECTS.length}`);
 
   let renderWidth = width;
   let renderHeight = height;
@@ -81,7 +81,9 @@ export async function createSlideshowEngine({
 
   const effectNames = EFFECTS.map((effect) => effect.name);
   const transitionCount = transitionCountForMode(PHOTOS.length, mode);
-  const effectSequence = createEffectSequence(effectNames, transitionCount, CONFIG.seeds.effects);
+  // Entre os slides de abertura do convite, usa sempre a transicao do convite.
+  const effectSequence = createEffectSequence(effectNames, transitionCount, CONFIG.seeds.effects)
+    .map((name, i) => (i < (CONFIG.openingCount || 0) ? "convite_brilho" : name));
   let motionPlans = createMotionPlans(PHOTOS, {
     width: renderWidth,
     height: renderHeight,
