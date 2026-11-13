@@ -48,7 +48,7 @@
       </button>
     </main>
     <script type="module">
-      import { createSlideshowEngine } from "./engine.js?v=5";
+      import { createSlideshowEngine } from "./engine.js?v=7";
 
       const viewer = document.getElementById("viewer");
       const canvas = document.getElementById("slideshow-canvas");
@@ -78,62 +78,113 @@
         console.error("Retro error", error);
       }
 
-      // ---- Transição do convite (portada do Builder): brilhos até branco total (deep to white) e o inverso ----
-      function createSparkles(w, h) {
-        const p = [];
-        for (let i = 0; i < 45; i++) p.push({ k: "s", x: Math.random() * w, y: Math.random() * h, size: 1 + Math.random() * 4, speed: .5 + Math.random() * 1.5, rot: Math.random() * Math.PI, twinkle: Math.random() * 6, delay: Math.random() * .3 });
-        for (let i = 0; i < 14; i++) p.push({ k: "b", x: Math.random() * w, y: Math.random() * h, size: 15 + Math.random() * 50, speed: .2 + Math.random() * .5, op: .08 + Math.random() * .15, delay: Math.random() * .3 });
-        return p;
+      // Copiado do convite (Builder v8 / Sara15Anos-HP). K escala os tamanhos para telas grandes.
+      let K = 1;
+      function createSparkleParticles(w, h) {
+        K = Math.max(1, Math.min(w, h) / 420);
+        const particles = [];
+        for (let i = 0; i < 45; i++) {
+          particles.push({
+            type: 'sparkle', x: Math.random() * w, y: Math.random() * h, size: 1 + Math.random() * 4,
+            speedX: (Math.random() - 0.5) * 3, speedY: (Math.random() - 0.5) * 3, opacity: 0.3 + Math.random() * 0.7,
+            rotation: Math.random() * Math.PI * 2, rotSpeed: (Math.random() - 0.5) * 0.15,
+            twinkleSpeed: 2 + Math.random() * 4, delay: Math.random() * 0.3
+          });
+        }
+        for (let i = 0; i < 14; i++) {
+          particles.push({
+            type: 'bokeh', x: Math.random() * w, y: Math.random() * h, size: 15 + Math.random() * 50,
+            speedX: (Math.random() - 0.5) * 1.5, speedY: -0.5 - Math.random() * 1.5,
+            opacity: 0.08 + Math.random() * 0.15, delay: Math.random() * 0.2
+          });
+        }
+        particles.push({ type: 'flare', x: w * 0.3, y: h * 0.4, angle: -0.4, length: w * 1.5, opacity: 0 });
+        return particles;
       }
-      function drawSparkle(w, h, parts, progress, whiteAlpha) {
-        sctx.clearRect(0, 0, w, h);
-        sctx.fillStyle = `rgba(255,255,255,${whiteAlpha})`;
-        sctx.fillRect(0, 0, w, h);
-        const sc = Math.max(w, h) / 1000 + .6;
-        for (const q of parts) {
-          const lp = Math.max(0, Math.min(1, (progress - q.delay) / (1 - q.delay)));
-          if (lp <= 0) continue;
-          if (q.k === "b") {
-            const y = q.y - lp * q.speed * h * .15;
-            const r = q.size * sc * (.6 + lp * .6);
-            const g = sctx.createRadialGradient(q.x, y, 0, q.x, y, r);
-            g.addColorStop(0, `rgba(255,236,190,${Math.min(1, q.op * lp * 2)})`);
-            g.addColorStop(1, "rgba(255,236,190,0)");
-            sctx.fillStyle = g; sctx.beginPath(); sctx.arc(q.x, y, r, 0, 7); sctx.fill();
-          } else {
-            const tw = .5 + .5 * Math.sin(progress * 12 * q.speed + q.twinkle);
-            const a = Math.min(1, lp * 1.5) * tw;
-            const r = q.size * sc * 3 * (.4 + lp);
-            sctx.save(); sctx.translate(q.x, q.y); sctx.rotate(q.rot + progress * q.speed);
-            sctx.shadowColor = "rgba(255,215,120,.9)"; sctx.shadowBlur = 12 * sc;
-            sctx.fillStyle = `rgba(255,222,140,${a})`;
-            sctx.beginPath();
-            for (let i = 0; i < 8; i++) { const rr = i % 2 ? r * .22 : r; const an = i * Math.PI / 4; sctx.lineTo(Math.cos(an) * rr, Math.sin(an) * rr); }
-            sctx.closePath(); sctx.fill(); sctx.restore();
+
+      function drawSparkleFrame(ctx, w, h, particles, progress, whiteAlpha) {
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = `rgba(255, 255, 255, ${whiteAlpha})`;
+        ctx.fillRect(0, 0, w, h);
+        for (const p of particles) {
+          const localProgress = Math.max(0, Math.min(1, (progress - p.delay) / (1 - p.delay)));
+          if (localProgress <= 0) continue;
+          const alpha = p.opacity * localProgress;
+          if (p.type === 'sparkle') {
+            p.x += p.speedX * K; p.y += p.speedY * K; p.rotation += p.rotSpeed;
+            const twinkle = 0.5 + 0.5 * Math.sin(localProgress * p.twinkleSpeed * Math.PI);
+            const sz = p.size * K * (0.5 + localProgress) * twinkle;
+            ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rotation);
+            ctx.globalAlpha = alpha * twinkle;
+            ctx.fillStyle = '#ffffff'; ctx.shadowColor = 'rgba(255, 255, 255, 0.9)'; ctx.shadowBlur = sz * 3;
+            ctx.beginPath();
+            for (let j = 0; j < 4; j++) {
+              const angle = (j / 4) * Math.PI * 2 - Math.PI / 2;
+              const nextAngle = ((j + 0.5) / 4) * Math.PI * 2 - Math.PI / 2;
+              ctx.lineTo(Math.cos(angle) * sz * 2.5, Math.sin(angle) * sz * 2.5);
+              ctx.lineTo(Math.cos(nextAngle) * sz * 0.4, Math.sin(nextAngle) * sz * 0.4);
+            }
+            ctx.closePath(); ctx.fill(); ctx.restore();
+          } else if (p.type === 'bokeh') {
+            p.x += p.speedX * K; p.y += p.speedY * K;
+            const sz = p.size * K * (0.6 + localProgress * 0.4);
+            ctx.save(); ctx.globalAlpha = alpha * localProgress;
+            const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, sz);
+            grad.addColorStop(0, 'rgba(255, 255, 255, 0.6)'); grad.addColorStop(0.4, 'rgba(255, 255, 240, 0.3)'); grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(p.x, p.y, sz, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+          } else if (p.type === 'flare') {
+            ctx.save(); ctx.globalAlpha = localProgress * 0.35; ctx.translate(p.x, p.y); ctx.rotate(p.angle);
+            const g = ctx.createLinearGradient(-p.length / 2, 0, p.length / 2, 0);
+            g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.3, 'rgba(255,255,255,0.4)'); g.addColorStop(0.5, 'rgba(255,255,255,0.8)');
+            g.addColorStop(0.7, 'rgba(255,255,255,0.4)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = g; const thickness = (6 + localProgress * 20) * K;
+            ctx.fillRect(-p.length / 2, -thickness / 2, p.length, thickness); ctx.restore();
           }
         }
-        sctx.save(); sctx.translate(w * .5, h * .5); sctx.rotate(-.4);
-        const fg = sctx.createLinearGradient(-w * .75, 0, w * .75, 0);
-        fg.addColorStop(0, "rgba(255,230,160,0)"); fg.addColorStop(.5, `rgba(255,240,200,${progress * .35})`); fg.addColorStop(1, "rgba(255,230,160,0)");
-        sctx.fillStyle = fg; sctx.fillRect(-w * .75, -3, w * 1.5, 6); sctx.restore();
+        ctx.globalAlpha = 1; ctx.shadowBlur = 0;
       }
       const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-      function frames(ms, fn) {
-        return new Promise((res) => {
-          const t0 = performance.now();
-          const step = (now) => { const p = Math.min(1, (now - t0) / ms); fn(p); p < 1 ? requestAnimationFrame(step) : res(); };
-          requestAnimationFrame(step);
+      // Mesmas fases do convite: 800ms de brilho ate o branco (p^2, alpha .95), segura no pico (.97) enquanto troca, 700ms inverso ((1-p)^2, alpha .9)
+      function sparkleTransition(onPeak) {
+        const w = (sparkle.width = window.innerWidth), h = (sparkle.height = window.innerHeight);
+        const particles = createSparkleParticles(w, h);
+        const FADE_IN_MS = 800, FADE_OUT_MS = 700;
+        return new Promise((resolve) => {
+          let peakReached = false, holdReleased = false, fadeOutStart = null;
+          const start = performance.now();
+          const release = () => { holdReleased = true; fadeOutStart = performance.now(); };
+          function animate(now) {
+            const elapsed = now - start;
+            if (elapsed < FADE_IN_MS) {
+              const e = (elapsed / FADE_IN_MS) ** 2;
+              drawSparkleFrame(sctx, w, h, particles, e, e * 0.95);
+              requestAnimationFrame(animate);
+            } else if (!holdReleased) {
+              if (!peakReached) { peakReached = true; Promise.resolve(onPeak()).then(release, release); }
+              drawSparkleFrame(sctx, w, h, particles, 1, 0.97);
+              requestAnimationFrame(animate);
+            } else {
+              const fe = now - fadeOutStart;
+              if (fe >= FADE_OUT_MS) { sctx.clearRect(0, 0, w, h); resolve(); return; }
+              const e = (1 - fe / FADE_OUT_MS) ** 2;
+              drawSparkleFrame(sctx, w, h, particles, e, e * 0.9);
+              requestAnimationFrame(animate);
+            }
+          }
+          requestAnimationFrame(animate);
         });
       }
-      async function sparkleTransition(onPeak) {
-        const w = (sparkle.width = window.innerWidth), h = (sparkle.height = window.innerHeight);
-        const parts = createSparkles(w, h);
-        await frames(800, (p) => { const e = p * p; drawSparkle(w, h, parts, e, e * .95); });
-        drawSparkle(w, h, parts, 1, .97);
-        await onPeak();
-        await wait(150);
-        await frames(700, (p) => { const e = (1 - p) * (1 - p); drawSparkle(w, h, parts, e, e * .9); });
-        sctx.clearRect(0, 0, w, h);
+
+      // Transicao do convite como opcao das aleatorias: mesmo brilho do convite, sincronizado com o progresso da troca
+      let ovKey = null, ovParticles = null;
+      function overlayConvite(st) {
+        const on = st.effectName === "convite_brilho" && st.effectIndex !== null && st.progress > 0 && st.progress < 1;
+        if (!on) { if (ovKey !== null) { sctx.clearRect(0, 0, sparkle.width, sparkle.height); ovKey = null; } return; }
+        const w = window.innerWidth, h = window.innerHeight;
+        if (ovKey !== st.effectIndex) { sparkle.width = w; sparkle.height = h; ovParticles = createSparkleParticles(w, h); ovKey = st.effectIndex; }
+        const p = st.progress;
+        const e = p < 0.5 ? (p / 0.5) ** 2 : ((1 - p) / 0.5) ** 2;
+        drawSparkleFrame(sctx, w, h, ovParticles, e, e * (p < 0.5 ? 0.95 : 0.9) + (p > 0.45 && p < 0.55 ? 0.02 : 0));
       }
 
       // ---- Fluxo: vídeo de abertura -> brilho -> fotos -> brilho -> vídeo ... ----
@@ -142,7 +193,8 @@
         try {
           latestTime = Math.min((now - startedAt) / 1000, engine.duration);
           await engine.prepareAt(latestTime);
-          engine.renderAt(latestTime);
+          const st = engine.renderAt(latestTime);
+          overlayConvite(st);
           engine.prepareAt(Math.min(latestTime + 4, engine.duration)).catch(() => {});
           if (latestTime >= engine.duration && !ending) { ending = true; playIntro(true); return; }
         } catch (error) { showError(error); }
