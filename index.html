@@ -37,8 +37,8 @@
     <main id="viewer" aria-label="Retrospectiva">
       <canvas id="slideshow-canvas"></canvas>
       <div id="intro" hidden>
-        <video id="introBg" muted playsinline preload="auto" src="assets/abertura.mp4"></video>
-        <video id="introFg" muted playsinline preload="auto" src="assets/abertura.mp4"></video>
+        <video id="introBg" muted playsinline preload="auto" src="assets/abertura.mp4?v=8"></video>
+        <video id="introFg" muted playsinline preload="auto" src="assets/abertura.mp4?v=8"></video>
       </div>
       <canvas id="sparkle"></canvas>
       <button id="start" type="button" aria-label="Iniciar retrospectiva"><div><div class="ic">▶</div></div></button>
@@ -219,7 +219,7 @@
       async function playIntro(withSparkle) {
         const done = new Promise((res) => { vFg.addEventListener("ended", res, { once: true }); });
         if (withSparkle) await sparkleTransition(showIntro); else await showIntro();
-        await Promise.race([done, wait(((vFg.duration || 24) + 3) * 1000)]);
+        await Promise.race([done, wait(((vFg.duration || 32) + 3) * 1000)]);
         await sparkleTransition(beginPhotos);
       }
       startBtn.addEventListener("click", async () => {
